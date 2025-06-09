@@ -1,5 +1,6 @@
 import { GraphQLClient, gql } from "graphql-request";
 import dotenv from "dotenv";
+import { round } from "./percentage";
 dotenv.config();
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || null;
@@ -94,19 +95,27 @@ export async function fetchAllUserRepos(user: string): Promise<RepoNode[]> {
 
 export async function fetchAllUserLanguages(
     user: string,
-): Promise<{ name: string; count: number }[]> {
-    let repos = await fetchAllUserRepos(user);
-    let languages = new Map<string, number>();
+): Promise<[{ name: string; count: number; share: number }[], number]> {
+    const repos = await fetchAllUserRepos(user);
+    const languages = new Map<string, number>();
+    let total = 0;
     repos.forEach((repo) => {
         repo.languages.edges.forEach((lang) => {
-            let tmp = languages.get(lang.node.name);
-            let next = (tmp ? tmp : 0) + lang.size;
-            languages.set(lang.node.name, next);
+            const current = languages.get(lang.node.name) ?? 0;
+            languages.set(lang.node.name, current + lang.size);
+            total += lang.size;
         });
     });
-    return [...languages]
-        .map((e) => {
-            return { name: e[0], count: e[1] };
-        })
-        .sort((a, b) => b.count - a.count);
+
+    const shares = round([...languages.values()].map((count) => count / total), 4);
+
+    const result = [...languages.keys()].map((name, i) => ({
+        name,
+        count: languages.get(name)!,
+        share: shares[i],
+    }));
+
+    result.sort((a, b) => b.count - a.count);
+
+    return [result, total];
 }
